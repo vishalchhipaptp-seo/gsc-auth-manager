@@ -81,9 +81,6 @@ if %errorlevel% neq 0 (
     %PYTHON_CMD% -m pip install flask patchright pywebview requests
 )
 
-echo  Installing Chromium browser for screenshots...
-%PYTHON_CMD% -m patchright install chromium >nul 2>&1
-
 echo.
 echo  [OK] All ready - launching app...
 echo.
