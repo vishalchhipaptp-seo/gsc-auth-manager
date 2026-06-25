@@ -15,7 +15,6 @@ Desktop companion app for setting up Google Search Console authentication. Runs 
 ## Requirements
 
 - Windows 10/11
-- Python 3.9+ installed and in PATH
 - Internet connection
 
-Dependencies install automatically on first run via `run.bat`.
+Python and all dependencies install automatically on first run via `run.bat`. No manual setup needed.
