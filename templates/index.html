@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GSC Auth Manager</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-logo">
+    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="28" height="28" rx="7" fill="#FF4D2E"/>
+      <path d="M8 14.5L12 18.5L20 10.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span class="header-title">GSC Auth Manager</span>
+    <span class="header-badge">Desktop</span>
+  </div>
+  <div class="header-right" id="headerRight" style="display:none">
+    <span class="header-user" id="headerUser"></span>
+    <button class="btn btn-secondary btn-sm" onclick="logout()">Disconnect</button>
+  </div>
+</div>
+
+<!-- Login Screen -->
+<div id="loginScreen" class="login-container">
+  <div class="login-card">
+    <div class="login-title">Connect to VPS</div>
+    <div class="login-sub">Sign in to your james-seo-tools dashboard to manage GSC screenshot authentication.</div>
+
+    <div class="field">
+      <label>VPS URL</label>
+      <input type="url" id="vpsUrl" placeholder="https://james.weblinkbuzz.com" value="https://james.weblinkbuzz.com">
+    </div>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="loginEmail" placeholder="admin@example.com">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="loginPassword" placeholder="Your dashboard password"
+             onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div id="loginError" class="error-msg" style="display:none"></div>
+    <button class="btn btn-primary btn-full" id="loginBtn" onclick="doLogin()" style="margin-top:8px">
+      Connect
+    </button>
+  </div>
+</div>
+
+<!-- Main Dashboard -->
+<div id="dashboard" class="main" style="display:none">
+
+  <!-- Stats -->
+  <div class="stats-bar" id="statsBar">
+    <div class="stat">
+      <div class="stat-value" id="statTotal">0</div>
+      <div class="stat-label">Total</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value green" id="statReady">0</div>
+      <div class="stat-label">Ready</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value amber" id="statPending">0</div>
+      <div class="stat-label">Need Setup</div>
+    </div>
+  </div>
+
+  <!-- Actions banner -->
+  <div id="actionBanner" style="display:none"></div>
+
+  <!-- Account list -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="eyebrow">GSC Accounts</div>
+        <div class="card-title">Screenshot Authentication</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary btn-sm" onclick="refreshAccounts()">
+          Refresh
+        </button>
+        <button class="btn btn-primary btn-sm" id="setupAllBtn" onclick="setupAllExpired()">
+          Set Up All Expired
+        </button>
+      </div>
+    </div>
+
+    <div id="accountList">
+      <div style="padding:20px;text-align:center;color:var(--ink-soft)">Loading accounts...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+let accounts = []
+let pollTimers = {}
+
+// ── Login ──
+async function doLogin() {
+  const btn = document.getElementById('loginBtn')
+  const errEl = document.getElementById('loginError')
+  btn.disabled = true
+  btn.textContent = 'Connecting...'
+  errEl.style.display = 'none'
+
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        vpsUrl: document.getElementById('vpsUrl').value,
+        email: document.getElementById('loginEmail').value,
+        password: document.getElementById('loginPassword').value,
+      })
+    })
+    const data = await r.json()
+    if (data.ok) {
+      document.getElementById('loginScreen').style.display = 'none'
+      document.getElementById('dashboard').style.display = 'block'
+      document.getElementById('headerRight').style.display = 'flex'
+      document.getElementById('headerUser').textContent = document.getElementById('loginEmail').value
+      refreshAccounts()
+    } else {
+      errEl.textContent = data.error || 'Login failed'
+      errEl.style.display = 'block'
+    }
+  } catch (e) {
+    errEl.textContent = 'Network error — check VPS URL'
+    errEl.style.display = 'block'
+  }
+  btn.disabled = false
+  btn.textContent = 'Connect'
+}
+
+function logout() {
+  document.getElementById('loginScreen').style.display = 'block'
+  document.getElementById('dashboard').style.display = 'none'
+  document.getElementById('headerRight').style.display = 'none'
+  accounts = []
+}
+
+// ── Accounts ──
+async function refreshAccounts() {
+  const el = document.getElementById('accountList')
+  el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--ink-soft)"><span class="spinner"></span> Loading...</div>'
+
+  try {
+    const r = await fetch('/api/accounts')
+    const data = await r.json()
+    accounts = data.accounts || []
+    renderAccounts()
+  } catch (e) {
+    el.innerHTML = '<div class="banner banner-warn">Failed to load accounts. Check VPS connection.</div>'
+  }
+}
+
+function renderAccounts() {
+  const el = document.getElementById('accountList')
+  const ready = accounts.filter(a => a.hasAuthState).length
+  const pending = accounts.length - ready
+
+  document.getElementById('statTotal').textContent = accounts.length
+  document.getElementById('statReady').textContent = ready
+  document.getElementById('statPending').textContent = pending
+
+  // Banner
+  const bannerEl = document.getElementById('actionBanner')
+  if (pending > 0 && ready > 0) {
+    bannerEl.innerHTML = `<div class="banner banner-warn"><strong>${pending} account${pending > 1 ? 's' : ''}</strong> need screenshot setup. Click "Set Up" on each or use "Set Up All Expired".</div>`
+    bannerEl.style.display = 'block'
+  } else if (pending === 0 && accounts.length > 0) {
+    bannerEl.innerHTML = '<div class="banner banner-success"><strong>All accounts are ready!</strong> Screenshot authentication is set up for all connected GSC accounts.</div>'
+    bannerEl.style.display = 'block'
+  } else {
+    bannerEl.style.display = 'none'
+  }
+
+  document.getElementById('setupAllBtn').style.display = pending > 0 ? '' : 'none'
+
+  if (accounts.length === 0) {
+    el.innerHTML = '<div class="banner banner-info">No accounts found. Connect GSC accounts on the VPS dashboard first.</div>'
+    return
+  }
+
+  el.innerHTML = accounts.map(a => {
+    const isRunning = a.setupRunning
+    const statusBadge = a.hasAuthState
+      ? '<span class="badge badge-green">Ready</span>'
+      : isRunning
+        ? '<span class="badge badge-amber"><span class="spinner"></span> Setting up...</span>'
+        : '<span class="badge badge-amber">Not set up</span>'
+
+    const localBadge = a.hasLocalAuth
+      ? '<span class="badge badge-green" style="font-size:10px">Local</span>'
+      : ''
+
+    const actions = []
+    if (!a.hasAuthState && !isRunning) {
+      actions.push(`<button class="btn btn-primary btn-sm" onclick="setupAccount('${a.accountKey}')">Set Up</button>`)
+    }
+    if (isRunning) {
+      actions.push('<span style="font-size:11px;color:var(--ink-soft)">Chrome opened — sign in...</span>')
+    }
+    if (a.hasLocalAuth && !a.hasAuthState) {
+      actions.push(`<button class="btn btn-secondary btn-sm" onclick="uploadAccount('${a.accountKey}')">Upload to VPS</button>`)
+    }
+    if (a.hasAuthState) {
+      actions.push(`<button class="btn btn-secondary btn-sm" onclick="setupAccount('${a.accountKey}')">Re-setup</button>`)
+    }
+    const statusMsg = a.setupStatus && !a.hasAuthState
+      ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${escapeHtml(a.setupStatus)}</div>`
+      : ''
+
+    return `
+      <div class="account-item">
+        <div class="account-info">
+          <div class="account-email">${escapeHtml(a.email)}</div>
+          <div class="account-key">${escapeHtml(a.accountKey)}</div>
+          ${statusMsg}
+        </div>
+        <div class="account-status">
+          <div class="account-status-label">VPS Auth</div>
+          ${statusBadge}
+        </div>
+        <div class="account-actions">
+          ${actions.join('')}
+        </div>
+      </div>
+    `
+  }).join('')
+}
+
+// ── Setup ──
+async function setupAccount(accountKey) {
+  try {
+    const r = await fetch('/api/setup', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({accountKey})
+    })
+    const data = await r.json()
+    if (!data.ok) {
+      alert(data.error || 'Setup failed')
+      return
+    }
+
+    // Update UI immediately
+    const acc = accounts.find(a => a.accountKey === accountKey)
+    if (acc) { acc.setupRunning = true; acc.setupStatus = 'Starting...' }
+    renderAccounts()
+
+    // Poll for completion
+    startPolling(accountKey)
+  } catch (e) {
+    alert('Error: ' + e.message)
+  }
+}
+
+function startPolling(accountKey) {
+  if (pollTimers[accountKey]) clearInterval(pollTimers[accountKey])
+  pollTimers[accountKey] = setInterval(async () => {
+    try {
+      const r = await fetch(`/api/status?accountKey=${encodeURIComponent(accountKey)}`)
+      const s = await r.json()
+      const acc = accounts.find(a => a.accountKey === accountKey)
+      if (acc) {
+        acc.setupRunning = s.running
+        acc.setupStatus = s.message
+      }
+      renderAccounts()
+
+      if (!s.running) {
+        clearInterval(pollTimers[accountKey])
+        delete pollTimers[accountKey]
+        // Refresh from VPS to get updated auth status
+        setTimeout(refreshAccounts, 1000)
+      }
+    } catch {}
+  }, 3000)
+}
+
+async function uploadAccount(accountKey) {
+  try {
+    const r = await fetch('/api/upload', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({accountKey})
+    })
+    const data = await r.json()
+    if (data.ok) {
+      refreshAccounts()
+    } else {
+      alert(data.error || 'Upload failed')
+    }
+  } catch (e) {
+    alert('Error: ' + e.message)
+  }
+}
+
+// ── Setup All ──
+async function setupAllExpired() {
+  const pending = accounts.filter(a => !a.hasAuthState && !a.setupRunning)
+  if (pending.length === 0) return
+
+  if (!confirm(`Set up ${pending.length} account(s)? Chrome will open for each one — sign in and wait for it to close, then the next will open.`)) return
+
+  for (const a of pending) {
+    await setupAccount(a.accountKey)
+    // Wait for this one to finish before starting next
+    await new Promise(resolve => {
+      const check = setInterval(async () => {
+        const r = await fetch(`/api/status?accountKey=${encodeURIComponent(a.accountKey)}`)
+        const s = await r.json()
+        if (!s.running) {
+          clearInterval(check)
+          resolve()
+        }
+      }, 3000)
+    })
+  }
+  refreshAccounts()
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div')
+  div.textContent = str || ''
+  return div.innerHTML
+}
+</script>
+
+</body>
+</html>
