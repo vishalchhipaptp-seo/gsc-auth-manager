@@ -62,6 +62,7 @@ def setup():
     import re
     data = request.json
     account_key = re.sub(r'@gmail\.com$', '', data.get("accountKey", "").strip(), flags=re.IGNORECASE)
+    email = data.get("email", "").strip()
     if not account_key:
         return jsonify({"ok": False, "error": "accountKey required"})
 
@@ -74,7 +75,7 @@ def setup():
         def on_status(msg):
             setup_status[account_key]["message"] = msg
 
-        ok, auth_state, msg = run_auth_setup(account_key, on_status)
+        ok, auth_state, msg = run_auth_setup(account_key, on_status, email=email)
         setup_status[account_key]["running"] = False
         setup_status[account_key]["message"] = msg
         setup_status[account_key]["success"] = ok

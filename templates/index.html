@@ -200,7 +200,7 @@ function renderAccounts() {
 
     const actions = []
     if (!a.hasAuthState && !isRunning) {
-      actions.push(`<button class="btn btn-primary btn-sm" onclick="setupAccount('${a.accountKey}')">Set Up</button>`)
+      actions.push(`<button class="btn btn-primary btn-sm" onclick="setupAccount('${a.accountKey}','${a.email}')">Set Up</button>`)
     }
     if (isRunning) {
       actions.push('<span style="font-size:11px;color:var(--ink-soft)">Chrome opened — sign in...</span>')
@@ -209,7 +209,7 @@ function renderAccounts() {
       actions.push(`<button class="btn btn-secondary btn-sm" onclick="uploadAccount('${a.accountKey}')">Upload to VPS</button>`)
     }
     if (a.hasAuthState) {
-      actions.push(`<button class="btn btn-secondary btn-sm" onclick="setupAccount('${a.accountKey}')">Re-setup</button>`)
+      actions.push(`<button class="btn btn-secondary btn-sm" onclick="setupAccount('${a.accountKey}','${a.email}')">Re-setup</button>`)
     }
     const statusMsg = a.setupStatus && !a.hasAuthState
       ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${escapeHtml(a.setupStatus)}</div>`
@@ -235,12 +235,12 @@ function renderAccounts() {
 }
 
 // ── Setup ──
-async function setupAccount(accountKey) {
+async function setupAccount(accountKey, email) {
   try {
     const r = await fetch('/api/setup', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({accountKey})
+      body: JSON.stringify({accountKey, email})
     })
     const data = await r.json()
     if (!data.ok) {
