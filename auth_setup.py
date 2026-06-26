@@ -89,6 +89,8 @@ def run_auth_setup(account_key, on_status=None):
         if on_status:
             on_status(msg)
 
+    import re
+    account_key = re.sub(r'@gmail\.com$', '', account_key, flags=re.IGNORECASE)
     AUTH_DIR.mkdir(exist_ok=True)
     PROFILE_ROOT.mkdir(exist_ok=True)
     out = AUTH_DIR / f"{account_key}.json"

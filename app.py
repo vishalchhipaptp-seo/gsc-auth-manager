@@ -42,8 +42,9 @@ def login():
 def accounts():
     accs = vps.get_accounts()
     result = []
+    import re
     for a in accs:
-        key = a.get("accountKey", "")
+        key = re.sub(r'@gmail\.com$', '', a.get("accountKey", ""), flags=re.IGNORECASE)
         status = vps.get_auth_status(key)
         local_file = AUTH_DIR / f"{key}.json"
         result.append({
@@ -58,8 +59,9 @@ def accounts():
 
 @app.route("/api/setup", methods=["POST"])
 def setup():
+    import re
     data = request.json
-    account_key = data.get("accountKey", "").strip()
+    account_key = re.sub(r'@gmail\.com$', '', data.get("accountKey", "").strip(), flags=re.IGNORECASE)
     if not account_key:
         return jsonify({"ok": False, "error": "accountKey required"})
 
@@ -92,8 +94,9 @@ def setup():
 
 @app.route("/api/upload", methods=["POST"])
 def upload():
+    import re
     data = request.json
-    account_key = data.get("accountKey", "").strip()
+    account_key = re.sub(r'@gmail\.com$', '', data.get("accountKey", "").strip(), flags=re.IGNORECASE)
     if not account_key:
         return jsonify({"ok": False, "error": "accountKey required"})
 
