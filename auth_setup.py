@@ -21,10 +21,10 @@ PROFILE_ROOT = Path(__file__).parent / ".login_profiles"
 
 def find_browser():
     cands = [
-        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
     ]
     if sys.platform != "win32":
         cands = ["/usr/bin/google-chrome", "/usr/bin/chromium-browser", "/usr/bin/chromium"]
@@ -176,15 +176,20 @@ def run_auth_setup(account_key, on_status=None, email=None):
                 time.sleep(3)
 
             try:
-                browser.close()
+                cdp.send("Browser.close")
             except Exception:
-                pass
+                try:
+                    browser.close()
+                except Exception:
+                    pass
     except Exception as e:
         message = f"CDP error: {e}"
 
-    try:
-        proc.terminate()
-    except Exception:
-        pass
+    time.sleep(2)
+    if proc.poll() is None:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
 
     return saved, auth_state, message
