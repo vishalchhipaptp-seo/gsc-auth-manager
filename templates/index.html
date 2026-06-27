@@ -89,6 +89,22 @@
       </div>
     </div>
 
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 16px">
+      <input id="accSearch" type="text" placeholder="Search email or account key…" oninput="renderAccounts()"
+             style="flex:1;min-width:240px;padding:9px 13px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;background:var(--surface-soft,#FBF3EA)">
+      <select id="accFilter" onchange="renderAccounts()"
+              style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;background:var(--surface-soft,#FBF3EA)">
+        <option value="pending">Needs setup</option>
+        <option value="ready">Ready</option>
+        <option value="all">All accounts</option>
+      </select>
+      <select id="accSort" onchange="renderAccounts()"
+              style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;background:var(--surface-soft,#FBF3EA)">
+        <option value="latest">Recently connected</option>
+        <option value="az">Name A–Z</option>
+      </select>
+    </div>
+
     <div id="accountList">
       <div style="padding:20px;text-align:center;color:var(--ink-soft)">Loading accounts...</div>
     </div>
@@ -186,7 +202,25 @@ function renderAccounts() {
     return
   }
 
-  el.innerHTML = accounts.map(a => {
+  // Search + filter + sort. Default: accounts that still need setup, newest first
+  // (i.e. the ones a user just connected and that need screenshot auth).
+  const q = (document.getElementById('accSearch').value || '').trim().toLowerCase()
+  const filter = document.getElementById('accFilter').value || 'pending'
+  const sort = document.getElementById('accSort').value || 'latest'
+  let visible = accounts.filter(a =>
+    !q || (a.email || '').toLowerCase().includes(q) || (a.accountKey || '').toLowerCase().includes(q))
+  if (filter === 'pending') visible = visible.filter(a => !a.hasAuthState)
+  else if (filter === 'ready') visible = visible.filter(a => a.hasAuthState)
+  visible = visible.slice().sort((a, b) => sort === 'az'
+    ? (a.email || '').localeCompare(b.email || '')
+    : new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+
+  if (visible.length === 0) {
+    el.innerHTML = '<div class="banner banner-info">No accounts match the current search/filter.</div>'
+    return
+  }
+
+  el.innerHTML = visible.map(a => {
     const isRunning = a.setupRunning
     const statusBadge = a.hasAuthState
       ? '<span class="badge badge-green">Ready</span>'
@@ -200,7 +234,7 @@ function renderAccounts() {
 
     const actions = []
     if (!a.hasAuthState && !isRunning) {
-      actions.push(`<button class="btn btn-primary btn-sm" onclick="setupAccount('${a.accountKey}','${a.email}')">Set Up</button>`)
+      actions.push(`<button class="btn btn-primary btn-sm" onclick="setupAccount('${a.accountKey}','${a.email || ''}')">Set Up</button>`)
     }
     if (isRunning) {
       actions.push('<span style="font-size:11px;color:var(--ink-soft)">Chrome opened — sign in...</span>')
@@ -209,7 +243,7 @@ function renderAccounts() {
       actions.push(`<button class="btn btn-secondary btn-sm" onclick="uploadAccount('${a.accountKey}')">Upload to VPS</button>`)
     }
     if (a.hasAuthState) {
-      actions.push(`<button class="btn btn-secondary btn-sm" onclick="setupAccount('${a.accountKey}','${a.email}')">Re-setup</button>`)
+      actions.push(`<button class="btn btn-secondary btn-sm" onclick="setupAccount('${a.accountKey}','${a.email || ''}')">Re-setup</button>`)
     }
     const statusMsg = a.setupStatus && !a.hasAuthState
       ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${escapeHtml(a.setupStatus)}</div>`
@@ -240,7 +274,7 @@ async function setupAccount(accountKey, email) {
     const r = await fetch('/api/setup', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({accountKey, email})
+      body: JSON.stringify({accountKey, email: email || ''})
     })
     const data = await r.json()
     if (!data.ok) {
