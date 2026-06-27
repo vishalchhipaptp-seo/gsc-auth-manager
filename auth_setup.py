@@ -78,12 +78,13 @@ def to_storage_state(cdp_cookies):
     return {"cookies": cookies, "origins": []}
 
 
-def run_auth_setup(account_key, on_status=None):
+def run_auth_setup(account_key, on_status=None, email=None):
     """
     Opens Chrome for the given account, waits for Google sign-in,
     captures cookies, and saves auth_state.
 
     on_status: callback(msg) for progress updates
+    email: Google email to pre-select in the account chooser / pre-fill on login
     Returns: (success: bool, auth_state: dict|None, message: str)
     """
     def status(msg):
@@ -103,7 +104,12 @@ def run_auth_setup(account_key, on_status=None):
         return False, None, "Chrome/Edge not found. Please install Chrome."
 
     port = free_port(9222)
-    status(f"Opening Chrome for {account_key}...")
+    start_url = START_URL
+    if email:
+        import urllib.parse
+        start_url = ("https://accounts.google.com/AccountChooser?"
+                     + urllib.parse.urlencode({"Email": email, "continue": START_URL}))
+    status(f"Opening Chrome for {email or account_key}...")
 
     proc = subprocess.Popen([
         browser_exe,
@@ -112,7 +118,7 @@ def run_auth_setup(account_key, on_status=None):
         "--no-first-run",
         "--no-default-browser-check",
         "--new-window",
-        START_URL,
+        start_url,
     ])
 
     deadline = time.time() + 30

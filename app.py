@@ -73,18 +73,23 @@ def setup():
         def on_status(msg):
             setup_status[account_key]["message"] = msg
 
-        ok, auth_state, msg = run_auth_setup(account_key, on_status, email=email)
-        setup_status[account_key]["running"] = False
-        setup_status[account_key]["message"] = msg
-        setup_status[account_key]["success"] = ok
+        try:
+            ok, auth_state, msg = run_auth_setup(account_key, on_status, email=email)
+            setup_status[account_key]["message"] = msg
+            setup_status[account_key]["success"] = ok
 
-        if ok and auth_state:
-            on_status("Uploading to VPS...")
-            upload_ok, upload_msg = vps.upload_auth_state(account_key, auth_state)
-            if upload_ok:
-                setup_status[account_key]["message"] = "Done — uploaded to VPS"
-            else:
-                setup_status[account_key]["message"] = f"Auth saved locally but upload failed: {upload_msg}"
+            if ok and auth_state:
+                on_status("Uploading to VPS...")
+                upload_ok, upload_msg = vps.upload_auth_state(account_key, auth_state)
+                if upload_ok:
+                    setup_status[account_key]["message"] = "Done — uploaded to VPS"
+                else:
+                    setup_status[account_key]["message"] = f"Auth saved locally but upload failed: {upload_msg}"
+        except Exception as e:
+            setup_status[account_key]["success"] = False
+            setup_status[account_key]["message"] = f"Error: {e}"
+        finally:
+            setup_status[account_key]["running"] = False
 
     t = threading.Thread(target=run, daemon=True)
     t.start()
