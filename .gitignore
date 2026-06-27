@@ -7,3 +7,4 @@ build/
 *.spec
 *.exe
 .env
+.login_profiles/
