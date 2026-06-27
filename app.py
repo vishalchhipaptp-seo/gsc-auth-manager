@@ -73,7 +73,7 @@ def setup():
         def on_status(msg):
             setup_status[account_key]["message"] = msg
 
-        ok, auth_state, msg = run_auth_setup(account_key, on_status, email=email)
+        ok, auth_state, msg = run_auth_setup(account_key, on_status)
         setup_status[account_key]["running"] = False
         setup_status[account_key]["message"] = msg
         setup_status[account_key]["success"] = ok
