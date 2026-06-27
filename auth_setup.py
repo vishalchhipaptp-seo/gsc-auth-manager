@@ -20,6 +20,7 @@ PROFILE_ROOT = Path(__file__).parent / ".login_profiles"
 
 
 def find_browser():
+    # Prefer Chrome (Edge only as a last-resort fallback).
     cands = [
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
@@ -77,37 +78,32 @@ def to_storage_state(cdp_cookies):
     return {"cookies": cookies, "origins": []}
 
 
-def run_auth_setup(account_key, on_status=None, email=None):
+def run_auth_setup(account_key, on_status=None):
     """
     Opens Chrome for the given account, waits for Google sign-in,
     captures cookies, and saves auth_state.
 
     on_status: callback(msg) for progress updates
-    email: Google email to pre-fill in login page
     Returns: (success: bool, auth_state: dict|None, message: str)
     """
     def status(msg):
         if on_status:
             on_status(msg)
 
-    import re
-    account_key = re.sub(r'@gmail\.com$', '', account_key, flags=re.IGNORECASE)
     AUTH_DIR.mkdir(exist_ok=True)
     PROFILE_ROOT.mkdir(exist_ok=True)
     out = AUTH_DIR / f"{account_key}.json"
-    user_data_dir = PROFILE_ROOT / account_key
+    # ONE shared Chrome profile for all accounts. After you sign in to your Google
+    # account(s) once, they stay logged in here — so setting up the next account
+    # just opens the account chooser (no password re-entry, no re-adding).
+    user_data_dir = PROFILE_ROOT / "_shared"
 
     browser_exe = find_browser()
     if not browser_exe:
         return False, None, "Chrome/Edge not found. Please install Chrome."
 
     port = free_port(9222)
-    start_url = START_URL
-    if email:
-        import urllib.parse
-        start_url = ("https://accounts.google.com/AccountChooser?"
-                     + urllib.parse.urlencode({"Email": email, "continue": START_URL}))
-    status(f"Opening Chrome for {email or account_key}...")
+    status(f"Opening Chrome for {account_key}...")
 
     proc = subprocess.Popen([
         browser_exe,
@@ -116,7 +112,7 @@ def run_auth_setup(account_key, on_status=None, email=None):
         "--no-first-run",
         "--no-default-browser-check",
         "--new-window",
-        start_url,
+        START_URL,
     ])
 
     deadline = time.time() + 30
@@ -176,20 +172,15 @@ def run_auth_setup(account_key, on_status=None, email=None):
                 time.sleep(3)
 
             try:
-                cdp.send("Browser.close")
+                browser.close()
             except Exception:
-                try:
-                    browser.close()
-                except Exception:
-                    pass
+                pass
     except Exception as e:
         message = f"CDP error: {e}"
 
-    time.sleep(2)
-    if proc.poll() is None:
-        try:
-            proc.terminate()
-        except Exception:
-            pass
+    try:
+        proc.terminate()
+    except Exception:
+        pass
 
     return saved, auth_state, message
