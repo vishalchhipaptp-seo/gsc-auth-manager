@@ -49,6 +49,8 @@ def accounts():
         result.append({
             **a,
             "hasAuthState": status.get("hasAuthState", False),
+            "sessionExpired": status.get("sessionExpired", False),
+            "sessionRemainingHours": status.get("sessionRemainingHours"),
             "hasLocalAuth": local_file.exists(),
             "setupStatus": setup_status.get(key, {}).get("message", ""),
             "setupRunning": setup_status.get(key, {}).get("running", False),

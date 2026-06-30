@@ -94,7 +94,7 @@
              style="flex:1;min-width:240px;padding:9px 13px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;background:var(--surface-soft,#FBF3EA)">
       <select id="accFilter" onchange="renderAccounts()"
               style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;background:var(--surface-soft,#FBF3EA)">
-        <option value="pending">Needs setup</option>
+        <option value="pending">Needs setup / Expired</option>
         <option value="ready">Ready</option>
         <option value="all">All accounts</option>
       </select>
@@ -176,17 +176,22 @@ async function refreshAccounts() {
 
 function renderAccounts() {
   const el = document.getElementById('accountList')
-  const ready = accounts.filter(a => a.hasAuthState).length
-  const pending = accounts.length - ready
+  const active = accounts.filter(a => a.hasAuthState && !a.sessionExpired).length
+  const expired = accounts.filter(a => a.hasAuthState && a.sessionExpired).length
+  const notSetup = accounts.filter(a => !a.hasAuthState).length
+  const pending = expired + notSetup
 
   document.getElementById('statTotal').textContent = accounts.length
-  document.getElementById('statReady').textContent = ready
+  document.getElementById('statReady').textContent = active
   document.getElementById('statPending').textContent = pending
 
   // Banner
   const bannerEl = document.getElementById('actionBanner')
-  if (pending > 0 && ready > 0) {
-    bannerEl.innerHTML = `<div class="banner banner-warn"><strong>${pending} account${pending > 1 ? 's' : ''}</strong> need screenshot setup. Click "Set Up" on each or use "Set Up All Expired".</div>`
+  if (expired > 0) {
+    bannerEl.innerHTML = `<div class="banner banner-warn"><strong>${expired} account${expired > 1 ? 's' : ''}</strong> expired session${expired > 1 ? 's' : ''}${notSetup > 0 ? ` and <strong>${notSetup}</strong> not set up` : ''}. Click "Set Up" or use "Set Up All Expired".</div>`
+    bannerEl.style.display = 'block'
+  } else if (notSetup > 0 && active > 0) {
+    bannerEl.innerHTML = `<div class="banner banner-warn"><strong>${notSetup} account${notSetup > 1 ? 's' : ''}</strong> need screenshot setup. Click "Set Up" on each or use "Set Up All Expired".</div>`
     bannerEl.style.display = 'block'
   } else if (pending === 0 && accounts.length > 0) {
     bannerEl.innerHTML = '<div class="banner banner-success"><strong>All accounts are ready!</strong> Screenshot authentication is set up for all connected GSC accounts.</div>'
@@ -209,8 +214,8 @@ function renderAccounts() {
   const sort = document.getElementById('accSort').value || 'latest'
   let visible = accounts.filter(a =>
     !q || (a.email || '').toLowerCase().includes(q) || (a.accountKey || '').toLowerCase().includes(q))
-  if (filter === 'pending') visible = visible.filter(a => !a.hasAuthState)
-  else if (filter === 'ready') visible = visible.filter(a => a.hasAuthState)
+  if (filter === 'pending') visible = visible.filter(a => !a.hasAuthState || a.sessionExpired)
+  else if (filter === 'ready') visible = visible.filter(a => a.hasAuthState && !a.sessionExpired)
   visible = visible.slice().sort((a, b) => sort === 'az'
     ? (a.email || '').localeCompare(b.email || '')
     : new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
@@ -222,7 +227,11 @@ function renderAccounts() {
 
   el.innerHTML = visible.map(a => {
     const isRunning = a.setupRunning
-    const statusBadge = a.hasAuthState
+    const statusBadge = a.hasAuthState && a.sessionExpired
+      ? '<span class="badge badge-red">Expired</span>'
+      : a.hasAuthState && a.sessionRemainingHours != null && a.sessionRemainingHours <= 48
+      ? `<span class="badge badge-amber">Expires in ${a.sessionRemainingHours}h</span>`
+      : a.hasAuthState
       ? '<span class="badge badge-green">Ready</span>'
       : isRunning
         ? '<span class="badge badge-amber"><span class="spinner"></span> Setting up...</span>'
@@ -233,8 +242,8 @@ function renderAccounts() {
       : ''
 
     const actions = []
-    if (!a.hasAuthState && !isRunning) {
-      actions.push(`<button class="btn btn-primary btn-sm" onclick="setupAccount('${a.accountKey}','${a.email || ''}')">Set Up</button>`)
+    if ((!a.hasAuthState || a.sessionExpired) && !isRunning) {
+      actions.push(`<button class="btn btn-primary btn-sm" onclick="setupAccount('${a.accountKey}','${a.email || ''}')">${a.sessionExpired ? 'Reconnect' : 'Set Up'}</button>`)
     }
     if (isRunning) {
       actions.push('<span style="font-size:11px;color:var(--ink-soft)">Chrome opened — sign in...</span>')
@@ -242,7 +251,7 @@ function renderAccounts() {
     if (a.hasLocalAuth && !a.hasAuthState) {
       actions.push(`<button class="btn btn-secondary btn-sm" onclick="uploadAccount('${a.accountKey}')">Upload to VPS</button>`)
     }
-    if (a.hasAuthState) {
+    if (a.hasAuthState && !a.sessionExpired) {
       actions.push(`<button class="btn btn-secondary btn-sm" onclick="setupAccount('${a.accountKey}','${a.email || ''}')">Re-setup</button>`)
     }
     const statusMsg = a.setupStatus && !a.hasAuthState
@@ -337,7 +346,7 @@ async function uploadAccount(accountKey) {
 
 // ── Setup All ──
 async function setupAllExpired() {
-  const pending = accounts.filter(a => !a.hasAuthState && !a.setupRunning)
+  const pending = accounts.filter(a => (!a.hasAuthState || a.sessionExpired) && !a.setupRunning)
   if (pending.length === 0) return
 
   if (!confirm(`Set up ${pending.length} account(s)? Chrome will open for each one — sign in and wait for it to close, then the next will open.`)) return
